@@ -3,6 +3,7 @@ import faiss
 import numpy as np
 import torch
 import torch.nn as nn
+from typing import List, Tuple
 
 class FAISSMemory:
     def __init__(self, dim=16, ngram_size=5):  # FIXED: n-gram context, not unigram
@@ -14,9 +15,17 @@ class FAISSMemory:
         
     def _build_embedding(self):
         """Neural embedding replacing ASCII encoding"""
+        class GRUWrapper(nn.Module):
+            def __init__(self, input_size, hidden_size):
+                super().__init__()
+                self.gru = nn.GRU(input_size, hidden_size, batch_first=True)
+            def forward(self, x):
+                out, _ = self.gru(x)
+                return out[:, -1, :] # Take last hidden state
+
         return nn.Sequential(
             nn.Embedding(7, 32),
-            nn.GRU(32, 64, batch_first=True),
+            GRUWrapper(32, 64),
             nn.Linear(64, self.dim)
         )
     
@@ -39,14 +48,18 @@ class FAISSMemory:
         target = recent_symbols[-1]  # Sn
         
         # Search similar contexts in memory
+        if self.index.ntotal == 0:
+            return 0.0
+
         query = self.encode_sequence(context)
-        D, I = self.index.search(query.reshape(1, -1), k=50)
+        k = min(50, self.index.ntotal)
+        D, I = self.index.search(query.reshape(1, -1).astype('float32'), k=k)
         
         if len(I[0]) == 0:
             return 0.0
         
         # Compute empirical conditional distribution
-        neighbors = [self.metadata[i] for i in I[0] if i < len(self.metadata)]
+        neighbors = [self.metadata[i] for i in I[0] if i >= 0 and i < len(self.metadata)]
         outcomes = [m[1] for m in neighbors]  # Next symbols after similar contexts
         
         # Estimate H(Sn | context) via neighbor entropy
@@ -72,8 +85,12 @@ class FAISSMemory:
         Returns: (expected_epsilon, confidence_sigma)
         FIXED: Explicit confidence definition
         """
+        if self.index.ntotal == 0:
+            return 0.0, 0.0
+
         query = self.encode_sequence(symbols)
-        D, I = self.index.search(query.reshape(1, -1), k=20)
+        k = min(20, self.index.ntotal)
+        D, I = self.index.search(query.reshape(1, -1).astype('float32'), k=k)
         
         if len(I[0]) == 0 or I[0][0] == -1:
             return 0.0, 0.0  # No memory
@@ -91,3 +108,13 @@ class FAISSMemory:
         confidence = 1.0 - min(variance / 4.0, 1.0)  # Normalize by max possible var (ε∈[-2,2])
         
         return expected_eps, confidence
+
+    def add(self, symbols: List[int], next_symbol: int, outcome_eps: float):
+        """Add new experience to memory"""
+        if len(symbols) < self.ngram_size:
+            return
+
+        vector = self.encode_sequence(symbols)
+        # FAISS expects float32
+        self.index.add(vector.reshape(1, -1).astype('float32'))
+        self.metadata.append((symbols[-self.ngram_size:], next_symbol, outcome_eps))

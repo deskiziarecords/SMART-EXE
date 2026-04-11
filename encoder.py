@@ -136,3 +136,14 @@ class SymbolicEncoder:
         density_factor = len(long) / total_dojis if total_dojis > 0 else 0
         
         return min(Q_raw * density_factor, 1.0)
+
+    def compute_eta_trend(self, k_bar: float, timeframe_minutes: int,
+                         reference_trend_minutes: int) -> float:
+        """
+        Trend efficiency: proportion of actual run length vs target trend length
+        """
+        target_k = reference_trend_minutes / timeframe_minutes
+        if target_k == 0:
+            return 0.0
+        eta = k_bar / target_k
+        return min(eta, 1.0)
