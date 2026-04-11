@@ -1,0 +1,167 @@
+{
+  "generated_at": "20260411_021730",
+  "total_samples": 3917953,
+  "total_windows": 41,
+  "pairs": [
+    "AUD_USD",
+    "EUR_USD",
+    "GBP_USD",
+    "NZD_USD",
+    "USD_CAD",
+    "USD_CHF",
+    "USD_JPY"
+  ],
+  "timeframes": [
+    "1d",
+    "1h",
+    "1m"
+  ],
+  "lookbacks": [
+    "30days",
+    "365days",
+    "60days",
+    "90days"
+  ],
+  "target_distribution": {
+    "I": 1667694,
+    "X": 660504,
+    "B": 658510,
+    "D": 393166,
+    "U": 386684,
+    "w": 75715,
+    "W": 75680
+  },
+  "pattern_statistics": {
+    "volatility_squeeze_count": 1005010,
+    "false_breakdown_count": 1138584,
+    "momentum_cap_count": 20702,
+    "weak_wick_late_count": 211261,
+    "doji_count": 2306647
+  },
+  "by_pair": {
+    "AUD_USD": {
+      "samples": 564089,
+      "windows": 6,
+      "timeframes": [
+        "1d",
+        "1h",
+        "1m"
+      ],
+      "avg_momentum_score": -0.381,
+      "pattern_rate": 1.224
+    },
+    "EUR_USD": {
+      "samples": 533349,
+      "windows": 5,
+      "timeframes": [
+        "1d",
+        "1h",
+        "1m"
+      ],
+      "avg_momentum_score": -0.282,
+      "pattern_rate": 1.21
+    },
+    "GBP_USD": {
+      "samples": 563789,
+      "windows": 6,
+      "timeframes": [
+        "1d",
+        "1h",
+        "1m"
+      ],
+      "avg_momentum_score": -0.184,
+      "pattern_rate": 1.204
+    },
+    "NZD_USD": {
+      "samples": 563823,
+      "windows": 6,
+      "timeframes": [
+        "1d",
+        "1h",
+        "1m"
+      ],
+      "avg_momentum_score": -0.453,
+      "pattern_rate": 1.236
+    },
+    "USD_CAD": {
+      "samples": 564554,
+      "windows": 6,
+      "timeframes": [
+        "1d",
+        "1h",
+        "1m"
+      ],
+      "avg_momentum_score": -0.342,
+      "pattern_rate": 1.217
+    },
+    "USD_CHF": {
+      "samples": 563814,
+      "windows": 6,
+      "timeframes": [
+        "1d",
+        "1h",
+        "1m"
+      ],
+      "avg_momentum_score": -0.428,
+      "pattern_rate": 1.232
+    },
+    "USD_JPY": {
+      "samples": 564535,
+      "windows": 6,
+      "timeframes": [
+        "1d",
+        "1h",
+        "1m"
+      ],
+      "avg_momentum_score": 0.266,
+      "pattern_rate": 1.044
+    }
+  },
+  "by_timeframe": {
+    "1d": {
+      "samples": 2114,
+      "windows": 7,
+      "pairs": [
+        "AUD_USD",
+        "EUR_USD",
+        "GBP_USD",
+        "NZD_USD",
+        "USD_CAD",
+        "USD_CHF",
+        "USD_JPY"
+      ],
+      "avg_sequence_length": 10,
+      "volatility_squeeze_rate": 0.0
+    },
+    "1h": {
+      "samples": 43489,
+      "windows": 7,
+      "pairs": [
+        "AUD_USD",
+        "EUR_USD",
+        "GBP_USD",
+        "NZD_USD",
+        "USD_CAD",
+        "USD_CHF",
+        "USD_JPY"
+      ],
+      "avg_sequence_length": 10,
+      "volatility_squeeze_rate": 0.0009
+    },
+    "1m": {
+      "samples": 3872350,
+      "windows": 27,
+      "pairs": [
+        "AUD_USD",
+        "EUR_USD",
+        "GBP_USD",
+        "NZD_USD",
+        "USD_CAD",
+        "USD_CHF",
+        "USD_JPY"
+      ],
+      "avg_sequence_length": 10,
+      "volatility_squeeze_rate": 0.2595
+    }
+  }
+}
