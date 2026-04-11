@@ -52,10 +52,13 @@ class RiskEngine:
     
     def get_threshold(self, metric: str, percentile: float = 80) -> float:
         """Get adaptive threshold from recent history"""
-        if not self.adaptive or len(self.threshold_history[metric]) < 100:
+        # Strip suffix to match threshold_history keys
+        history_key = metric.replace('_max', '').replace('_min', '')
+
+        if not self.adaptive or history_key not in self.threshold_history or len(self.threshold_history[history_key]) < 100:
             return self.base_thresholds.get(metric, 0.5)
         
-        return np.percentile(self.threshold_history[metric], percentile)
+        return np.percentile(self.threshold_history[history_key], percentile)
     
     def evaluate(self, M: MarketState, 
                  expected_epsilon: float, 

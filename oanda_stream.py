@@ -1,7 +1,10 @@
 # oanda_stream.py
 import asyncio
 import aiohttp
+import json
+import time
 from datetime import datetime
+from tick_aggregator import Tick
 
 class OandaStreamer:
     def __init__(self, account_id, api_key, aggregator):
