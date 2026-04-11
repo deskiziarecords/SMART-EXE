@@ -1,6 +1,6 @@
 # lambda7.py - DXY → EUR/USD causality
 import numpy as np
-from typing import Dict, Optional
+from typing import Dict, Optional, Tuple
 from dataclasses import dataclass
 
 @dataclass
