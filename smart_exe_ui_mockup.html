@@ -1,0 +1,310 @@
+
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:var(--font-mono,"Courier New",monospace)}
+.app{background:#0a0a0a;color:#c8c8c0;min-height:680px;padding:10px;border-radius:8px;display:flex;flex-direction:column;gap:8px}
+.topbar{display:flex;align-items:center;gap:12px;padding:6px 10px;background:#111;border-radius:6px;border:0.5px solid #222}
+.asset-label{font-size:13px;font-weight:500;color:#e8e8e0;letter-spacing:0.08em}
+.price-display{font-size:18px;font-weight:500;color:#a8d8a8;letter-spacing:0.05em;margin-left:auto}
+.spread-label{font-size:11px;color:#555;margin-left:8px}
+.broker-badge{font-size:10px;padding:2px 8px;border:0.5px solid #333;border-radius:4px;color:#666}
+.mode-toggle{display:flex;gap:4px;margin-left:12px}
+.mode-btn{font-size:10px;padding:3px 10px;border:0.5px solid #333;background:transparent;color:#555;border-radius:4px;cursor:pointer;letter-spacing:0.06em}
+.mode-btn.active{border-color:#4a7a4a;color:#8ab88a;background:#0f1f0f}
+.main-row{display:grid;grid-template-columns:1fr 240px;gap:8px;flex:1}
+.stream-panel{background:#0e0e0e;border:0.5px solid #1a1a1a;border-radius:6px;padding:10px;display:flex;flex-direction:column;gap:6px;overflow:hidden}
+.stream-header{font-size:10px;color:#3a3a3a;letter-spacing:0.1em;padding-bottom:6px;border-bottom:0.5px solid #1a1a1a;display:flex;justify-content:space-between}
+.block-row{display:flex;gap:3px;align-items:center;padding:2px 0}
+.pos-label{font-size:9px;color:#2a2a2a;width:28px;text-align:right;flex-shrink:0}
+.symbol-block{width:22px;height:22px;border-radius:3px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:500;flex-shrink:0;transition:all 0.15s}
+.block-B{background:#0f2010;color:#5a9a5a;border:0.5px solid #1a4020}
+.block-I{background:#200f0f;color:#9a4a4a;border:0.5px solid #401a1a}
+.block-X{background:#151510;color:#7a7a50;border:0.5px solid #2a2a18}
+.block-U{background:#0a1820;color:#4a7a9a;border:0.5px solid #152840}
+.block-w{background:#1a1220;color:#6a4a8a;border:0.5px solid #2a1a3a}
+.block-D{background:#111111;color:#4a4a4a;border:0.5px solid #222}
+.block-W{background:#201a08;color:#9a7a2a;border:0.5px solid #3a2a10}
+.block-ACTIVE{box-shadow:0 0 6px currentColor;opacity:1}
+.pattern-tag{font-size:9px;padding:1px 6px;border-radius:3px;margin-left:6px;letter-spacing:0.05em}
+.tag-HIGH{background:#201008;color:#9a5020;border:0.5px solid #3a1a08}
+.tag-MEDIUM{background:#0a1520;color:#3a6a8a;border:0.5px solid #102030}
+.tag-IGNORE{background:#111;color:#2a2a2a;border:0.5px solid #1a1a1a}
+.side-panel{display:flex;flex-direction:column;gap:8px}
+.metric-card{background:#0e0e0e;border:0.5px solid #1a1a1a;border-radius:6px;padding:10px}
+.metric-title{font-size:9px;color:#333;letter-spacing:0.1em;margin-bottom:6px}
+.metric-row{display:flex;justify-content:space-between;align-items:center;margin:3px 0}
+.metric-name{font-size:10px;color:#444}
+.metric-bar-wrap{width:80px;height:4px;background:#1a1a1a;border-radius:2px;overflow:hidden}
+.metric-bar{height:100%;border-radius:2px;transition:width 0.3s}
+.metric-val{font-size:10px;width:36px;text-align:right}
+.signal-card{background:#0e0e0e;border:0.5px solid #1a1a1a;border-radius:6px;padding:10px}
+.signal-title{font-size:9px;color:#333;letter-spacing:0.1em;margin-bottom:8px}
+.signal-state{font-size:11px;color:#333;text-align:center;padding:8px;letter-spacing:0.06em}
+.state-WAIT{color:#2a2a2a}
+.state-WATCH{color:#6a6a2a}
+.state-READY{color:#2a6a2a}
+.action-row{display:flex;gap:6px;margin-top:8px}
+.act-btn{flex:1;padding:8px 4px;border-radius:4px;border:0.5px solid #222;background:transparent;font-size:11px;letter-spacing:0.08em;cursor:pointer;font-family:inherit;transition:all 0.2s}
+.btn-buy{color:#2a4a2a;border-color:#1a3a1a}
+.btn-buy.glow{color:#5aaa5a;border-color:#2a6a2a;background:#0a1a0a;box-shadow:0 0 8px #2a5a2a}
+.btn-sell{color:#4a2a2a;border-color:#3a1a1a}
+.btn-sell.glow{color:#aa5a5a;border-color:#6a2a2a;background:#1a0a0a;box-shadow:0 0 8px #5a2a2a}
+.close-btn{width:100%;padding:7px;border-radius:4px;border:0.5px solid #1a3a1a;background:transparent;font-size:10px;color:#2a4a2a;cursor:pointer;font-family:inherit;letter-spacing:0.08em;margin-top:4px;transition:all 0.2s}
+.close-btn.active{color:#7acc7a;border-color:#3a7a3a;background:#071507;box-shadow:0 0 6px #2a5a2a}
+.log-strip{background:#0a0a0a;border:0.5px solid #151515;border-radius:6px;padding:6px 10px;display:flex;gap:16px;align-items:center;overflow:hidden}
+.log-item{font-size:9px;color:#252525;white-space:nowrap;letter-spacing:0.04em}
+.log-item.recent{color:#3a5a3a}
+.log-item.warn{color:#5a4a1a}
+.entropy-wrap{display:flex;align-items:center;gap:6px;margin-left:auto;flex-shrink:0}
+.entropy-label{font-size:9px;color:#2a2a2a;letter-spacing:0.08em}
+.entropy-val{font-size:11px;font-weight:500}
+.ent-low{color:#4a7a4a}
+.ent-med{color:#7a7a3a}
+.ent-high{color:#7a3a3a}
+.seq-display{font-size:9px;color:#2a3a2a;margin-left:8px;letter-spacing:0.12em}
+</style>
+
+<div class="app">
+  <div class="topbar">
+    <span class="asset-label">EUR / USD</span>
+    <span class="broker-badge">OANDA</span>
+    <span class="broker-badge">demo</span>
+    <div class="mode-toggle">
+      <button class="mode-btn active" id="btn-manual" onclick="setMode('manual')">manual</button>
+      <button class="mode-btn" id="btn-auto" onclick="setMode('auto')">auto</button>
+    </div>
+    <span class="price-display" id="price-disp">1.08421</span>
+    <span class="spread-label">0.8 pip</span>
+  </div>
+
+  <div class="main-row">
+    <div class="stream-panel">
+      <div class="stream-header">
+        <span>pattern stream  ·  1m</span>
+        <span id="stream-pos">pos 47</span>
+      </div>
+      <div id="block-rows"></div>
+    </div>
+
+    <div class="side-panel">
+      <div class="metric-card">
+        <div class="metric-title">market state</div>
+        <div class="metric-row">
+          <span class="metric-name">entropy H</span>
+          <div class="metric-bar-wrap"><div class="metric-bar" id="bar-ent" style="width:38%;background:#3a3a2a"></div></div>
+          <span class="metric-val ent-low" id="val-ent">0.38</span>
+        </div>
+        <div class="metric-row">
+          <span class="metric-name">momentum ρ</span>
+          <div class="metric-bar-wrap"><div class="metric-bar" id="bar-mom" style="width:62%;background:#1a3a1a"></div></div>
+          <span class="metric-val" style="color:#4a6a4a" id="val-mom">+0.62</span>
+        </div>
+        <div class="metric-row">
+          <span class="metric-name">doji density</span>
+          <div class="metric-bar-wrap"><div class="metric-bar" id="bar-doji" style="width:12%;background:#2a2a2a"></div></div>
+          <span class="metric-val" style="color:#333" id="val-doji">0.12</span>
+        </div>
+        <div class="metric-row">
+          <span class="metric-name">λ7 causal</span>
+          <div class="metric-bar-wrap"><div class="metric-bar" id="bar-lam" style="width:78%;background:#1a2a3a"></div></div>
+          <span class="metric-val" style="color:#3a5a6a" id="val-lam">0.78</span>
+        </div>
+        <div class="metric-row">
+          <span class="metric-name">MI predict</span>
+          <div class="metric-bar-wrap"><div class="metric-bar" id="bar-mi" style="width:55%;background:#2a1a3a"></div></div>
+          <span class="metric-val" style="color:#5a3a7a" id="val-mi">0.55</span>
+        </div>
+      </div>
+
+      <div class="signal-card">
+        <div class="signal-title">signal</div>
+        <div class="signal-state" id="signal-state">— waiting —</div>
+        <div id="pattern-alerts" style="margin-top:6px;display:flex;flex-direction:column;gap:3px"></div>
+        <div id="manual-controls">
+          <div class="action-row">
+            <button class="act-btn btn-buy" id="btn-buy">BUY</button>
+            <button class="act-btn btn-sell" id="btn-sell">SELL</button>
+          </div>
+          <button class="close-btn" id="btn-close">close position</button>
+        </div>
+        <div id="auto-controls" style="display:none;margin-top:8px">
+          <div style="font-size:9px;color:#2a4a2a;letter-spacing:0.08em;text-align:center;padding:4px">model active  ·  monitoring</div>
+          <div style="font-size:9px;color:#1a2a1a;text-align:center;margin-top:2px" id="auto-status">local llm  ·  rag ready</div>
+          <button class="close-btn" id="btn-auto-close" style="margin-top:6px">emergency stop</button>
+        </div>
+      </div>
+
+      <div class="metric-card">
+        <div class="metric-title">session</div>
+        <div class="metric-row"><span class="metric-name">trades today</span><span class="metric-val" style="color:#444" id="trades-today">3</span></div>
+        <div class="metric-row"><span class="metric-name">blocked</span><span class="metric-val" style="color:#4a3a2a" id="blocked-count">11</span></div>
+        <div class="metric-row"><span class="metric-name">p&l</span><span class="metric-val" style="color:#3a5a3a" id="pnl-val">+0.0038</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="log-strip">
+    <span class="log-item warn" id="log1">12:31  BLOCKED · entropy 1.42 &gt; threshold</span>
+    <span class="log-item recent" id="log2">12:28  BUY 0.01  ·  BBUBD → λ7 ok</span>
+    <span class="log-item" id="log3">12:14  BLOCKED · doji density 0.61</span>
+    <span class="log-item" id="log4">11:58  SELL 0.01  ·  IIIXB → reversal</span>
+    <div class="entropy-wrap">
+      <span class="entropy-label">H(S)</span>
+      <span class="entropy-val ent-low" id="entropy-badge">0.38</span>
+      <span class="seq-display" id="last-seq">BBUIBBXIBB</span>
+    </div>
+  </div>
+</div>
+
+<script>
+const COLORS = {
+  B:{bg:'#0f2010',fg:'#5a9a5a',bd:'#1a4020'},
+  I:{bg:'#200f0f',fg:'#9a4a4a',bd:'#401a1a'},
+  X:{bg:'#151510',fg:'#7a7a50',bd:'#2a2a18'},
+  U:{bg:'#0a1820',fg:'#4a7a9a',bd:'#152840'},
+  w:{bg:'#1a1220',fg:'#6a4a8a',bd:'#2a1a3a'},
+  D:{bg:'#111111',fg:'#4a4a4a',bd:'#222222'},
+  W:{bg:'#201a08',fg:'#9a7a2a',bd:'#3a2a10'},
+};
+const PATTERN_COLORS={HIGH:'#9a5020',MEDIUM:'#3a6a8a',IGNORE:'#2a2a2a'};
+let currentSeq = 'IIBXXIBBUBD';
+let position = 47;
+let mode = 'manual';
+let signalState = 'WAIT';
+let tick = 0;
+let price = 1.08421;
+
+function symbolBlock(sym, isLatest){
+  const c = COLORS[sym]||COLORS['D'];
+  const glow = isLatest ? `box-shadow:0 0 7px ${c.fg};` : '';
+  return `<div class="symbol-block" style="background:${c.bg};color:${c.fg};border:0.5px solid ${c.bd};${glow}">${sym}</div>`;
+}
+
+function detectPatterns(seq){
+  const found=[];
+  if(seq.includes('IIII')) found.push({name:'VOLATILITY SQZ',urgency:'HIGH'});
+  if(seq.includes('BBBBB')) found.push({name:'MOMENTUM CAP',urgency:'HIGH'});
+  if(seq.includes('XB')) found.push({name:'FALSE BRKDN',urgency:'MEDIUM'});
+  if(seq.slice(-3).includes('w')) found.push({name:'WEAK WICK',urgency:'IGNORE'});
+  return found;
+}
+
+function renderStream(){
+  const container = document.getElementById('block-rows');
+  const rows=[];
+  const rowSize=12;
+  const seqToShow = currentSeq.slice(-36);
+  for(let r=0;r<3;r++){
+    const chunk=seqToShow.slice(r*rowSize,(r+1)*rowSize);
+    if(!chunk) break;
+    const posStart = position - seqToShow.length + r*rowSize;
+    let blocks='';
+    chunk.split('').forEach((s,i)=>{
+      const isLatest=(r===2 && i===chunk.length-1);
+      blocks+=symbolBlock(s,isLatest);
+    });
+    const pats = r===2 ? detectPatterns(chunk) : [];
+    const tags = pats.map(p=>`<span class="pattern-tag tag-${p.urgency}" style="color:${PATTERN_COLORS[p.urgency]}">${p.name}</span>`).join('');
+    rows.push(`<div class="block-row"><span class="pos-label">${posStart+rowSize}</span>${blocks}${tags}</div>`);
+  }
+  container.innerHTML=rows.join('');
+  document.getElementById('stream-pos').textContent=`pos ${position}`;
+  document.getElementById('last-seq').textContent=currentSeq.slice(-10);
+}
+
+function computeMetrics(seq){
+  const n=seq.length;
+  const cnt={};
+  for(const s of 'BIXUwDW') cnt[s]=(seq.split(s).length-1);
+  const ent = -Object.values(cnt).filter(v=>v>0).reduce((a,v)=>{
+    const p=v/n; return a+p*Math.log2(p);
+  },0);
+  const mom = (cnt.B-cnt.I)/n;
+  const doji = cnt.D/n;
+  const lam = 0.5+Math.random()*0.4;
+  const mi = Math.max(0, 1-ent/2.8);
+  return {ent:Math.min(ent,2.8),mom,doji,lam,mi};
+}
+
+function updateMetrics(){
+  const m = computeMetrics(currentSeq);
+  const setBar=(id,val,w)=>{
+    document.getElementById(id).style.width=Math.round(w*100)+'%';
+  };
+  const setVal=(id,txt,cls)=>{
+    const el=document.getElementById(id);
+    el.textContent=txt;
+    if(cls){el.className='metric-val '+cls;}
+  };
+  const entNorm=m.ent/2.8;
+  setBar('bar-ent',m.ent,entNorm);
+  document.getElementById('bar-ent').style.background=entNorm<0.4?'#2a3a2a':entNorm<0.7?'#3a3a1a':'#3a1a1a';
+  setVal('val-ent',(m.ent).toFixed(2),entNorm<0.4?'ent-low':entNorm<0.7?'ent-med':'ent-high');
+  setBar('bar-mom',m.mom,Math.max(0,(m.mom+1)/2));
+  document.getElementById('bar-mom').style.background=m.mom>0?'#1a3a1a':'#3a1a1a';
+  setVal('val-mom',(m.mom>=0?'+':'')+m.mom.toFixed(2),'metric-val');
+  document.getElementById('val-mom').style.color=m.mom>0.2?'#4a7a4a':m.mom<-0.2?'#7a4a4a':'#5a5a3a';
+  setBar('bar-doji',m.doji,m.doji);
+  setVal('val-doji',m.doji.toFixed(2),'metric-val');
+  document.getElementById('val-doji').style.color=m.doji>0.3?'#7a5a3a':'#333';
+  setBar('bar-lam',m.lam,m.lam);
+  setVal('val-lam',m.lam.toFixed(2),'metric-val');
+  setBar('bar-mi',m.mi,m.mi);
+  setVal('val-mi',m.mi.toFixed(2),'metric-val');
+  document.getElementById('entropy-badge').textContent=m.ent.toFixed(2);
+  document.getElementById('entropy-badge').className='entropy-val '+(entNorm<0.4?'ent-low':entNorm<0.7?'ent-med':'ent-high');
+
+  const pats=detectPatterns(currentSeq.slice(-20));
+  const palerts=document.getElementById('pattern-alerts');
+  palerts.innerHTML=pats.map(p=>`<div style="font-size:9px;letter-spacing:0.06em;color:${PATTERN_COLORS[p.urgency]};padding:2px 0;border-left:2px solid ${PATTERN_COLORS[p.urgency]};padding-left:6px">${p.name}</div>`).join('');
+
+  const highPat=pats.some(p=>p.urgency==='HIGH');
+  const buySignal = m.mom>0.3 && m.ent<0.6 && m.mi>0.4 && highPat;
+  const sellSignal = m.mom<-0.3 && m.ent<0.6 && m.mi>0.4;
+  signalState = buySignal?'BUY':sellSignal?'SELL':'WAIT';
+
+  const stateEl=document.getElementById('signal-state');
+  if(signalState==='BUY'){
+    stateEl.textContent='▲  buy signal';
+    stateEl.style.color='#4a8a4a';
+    document.getElementById('btn-buy').className='act-btn btn-buy glow';
+    document.getElementById('btn-sell').className='act-btn btn-sell';
+  } else if(signalState==='SELL'){
+    stateEl.textContent='▼  sell signal';
+    stateEl.style.color='#8a4a4a';
+    document.getElementById('btn-sell').className='act-btn btn-sell glow';
+    document.getElementById('btn-buy').className='act-btn btn-buy';
+  } else {
+    stateEl.textContent='— waiting —';
+    stateEl.style.color='#2a2a2a';
+    document.getElementById('btn-buy').className='act-btn btn-buy';
+    document.getElementById('btn-sell').className='act-btn btn-sell';
+  }
+}
+
+function setMode(m){
+  mode=m;
+  document.getElementById('btn-manual').className='mode-btn'+(m==='manual'?' active':'');
+  document.getElementById('btn-auto').className='mode-btn'+(m==='auto'?' active':'');
+  document.getElementById('manual-controls').style.display=m==='manual'?'block':'none';
+  document.getElementById('auto-controls').style.display=m==='auto'?'block':'none';
+}
+
+const SYMS='BBBBIXXIBBwUXBIIIBBXUD';
+function addTick(){
+  const s=SYMS[tick%SYMS.length];
+  currentSeq+=s;
+  if(currentSeq.length>80) currentSeq=currentSeq.slice(-60);
+  position++;
+  tick++;
+  price+=(Math.random()-0.49)*0.00012;
+  document.getElementById('price-disp').textContent=price.toFixed(5);
+  renderStream();
+  updateMetrics();
+}
+
+setMode('manual');
+renderStream();
+updateMetrics();
+setInterval(addTick, 1800);
+</script>
