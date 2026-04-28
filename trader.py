@@ -1,35 +1,54 @@
-import requests
-from config import BASE_URL, ACCOUNT_ID, OANDA_API_KEY, PAIR
+import MetaTrader5 as mt5
+from config import PAIR
 
-class OandaTrader:
-    def execute(self, direction, size, price=None):
-        units = int(size * 100000)
-        if direction == "SELL" or direction == "SHORT":
-            units = -abs(units)
-        else:
-            units = abs(units)
+class Trader:
+    def order(self, direction: str, size: float) -> int:
+        tick   = mt5.symbol_info_tick(PAIR)
+        price  = tick.ask if direction == 'LONG' else tick.bid
+        action = mt5.ORDER_TYPE_BUY if direction == 'LONG' else mt5.ORDER_TYPE_SELL
 
-        url = f"{BASE_URL}/accounts/{ACCOUNT_ID}/orders"
+        result = mt5.order_send({
+            "action":   mt5.TRADE_ACTION_DEAL,
+            "symbol":   PAIR,
+            "volume":   round(size, 2),
+            "type":     action,
+            "price":    price,
+            "deviation":10,
+            "magic":    20250428,
+            "comment":  "SMART-EXE",
+            "type_time":mt5.ORDER_TIME_GTC,
+            "type_filling": mt5.ORDER_FILLING_IOC,
+        })
 
-        data = {
-            "order": {
-                "instrument": PAIR,
-                "units": str(units),
-                "type": "MARKET"
-            }
-        }
+        if result.retcode != mt5.TRADE_RETCODE_DONE:
+            print(f"  [TRADER] Order failed: {result.retcode} {result.comment}")
+            return -1
 
-        try:
-            r = requests.post(url,
-                headers={"Authorization": f"Bearer {OANDA_API_KEY}"},
-                json=data)
-            print(f"Trade Execution: {direction} {size} units. Response: {r.text}")
-            return r.json()
-        except Exception as e:
-            print(f"Error executing trade: {e}")
-            return None
+        print(f"  [TRADER] {direction} {size} lots @ {price:.5f} ticket={result.order}")
+        return result.order
 
-    def get_equity(self):
-        # In a real system, this would call OANDA API to get account balance
-        # For now, return a default value or mock it
-        return 10000.0
+    def close(self, ticket: int):
+        position = None
+        for pos in mt5.positions_get():
+            if pos.ticket == ticket:
+                position = pos
+                break
+        if not position:
+            return
+
+        tick   = mt5.symbol_info_tick(PAIR)
+        price  = tick.bid if position.type == 0 else tick.ask
+        action = mt5.ORDER_TYPE_SELL if position.type == 0 else mt5.ORDER_TYPE_BUY
+
+        mt5.order_send({
+            "action":    mt5.TRADE_ACTION_DEAL,
+            "symbol":    PAIR,
+            "volume":    position.volume,
+            "type":      action,
+            "price":     price,
+            "position":  ticket,
+            "deviation": 10,
+            "magic":     20250428,
+            "comment":   "SMART-EXE close",
+            "type_filling": mt5.ORDER_FILLING_IOC,
+        })
