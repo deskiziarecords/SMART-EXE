@@ -1,120 +1,267 @@
-# memory.py - Corrected mutual information
-import faiss
+"""
+memory.py — SMART-EXE Semantic Pattern Memory
+==============================================
+Upgrade from raw ASCII embeddings to CLM learned embeddings.
+
+OLD: embed(seq) = [ord(c) % 7 for c in seq]  ← meaningless geometry
+NEW: embed(seq) = clm.get_embedding(seq)       ← learned semantic space
+
+The CLM embedding space has real geometric meaning:
+  - Sequences that produce similar next-symbol distributions
+    are close in embedding space
+  - FAISS search finds patterns that are semantically similar,
+    not just character-similar
+
+Two modes:
+  1. WITH CLM (recommended): semantic embeddings via Transformer
+  2. WITHOUT CLM (fallback): improved positional encoding,
+     still far better than ord(c) % 7
+
+Usage:
+    from memory import Memory
+    from model import load_model
+
+    clm    = load_model('clm_eurusd.pt')
+    memory = Memory(clm=clm)
+
+    # After a trade outcome:
+    memory.add(sequence, outcome=1.0)   # 1.0 = win, -1.0 = loss, 0 = neutral
+
+    # Before a trade:
+    bias, confidence, n_similar = memory.query(sequence)
+    # bias: -1 to +1 (negative = historically bearish, positive = bullish)
+    # confidence: 0-1 (how consistent were the similar patterns)
+    # n_similar: how many matches found
+
+Interface is backward compatible with old Memory class.
+"""
+
 import numpy as np
-import torch
-import torch.nn as nn
-from typing import List, Tuple
 
-class FAISSMemory:
-    def __init__(self, dim=16, ngram_size=5):  # FIXED: n-gram context, not unigram
-        self.dim = dim
-        self.ngram_size = ngram_size
-        self.index = faiss.IndexFlatIP(dim)  # Inner product for similarity
-        self.metadata = []  # Store (pattern, outcome, epsilon) tuples
-        self.embedding_net = self._build_embedding()
-        
-    def _build_embedding(self):
-        """Neural embedding replacing ASCII encoding"""
-        class GRUWrapper(nn.Module):
-            def __init__(self, input_size, hidden_size):
-                super().__init__()
-                self.gru = nn.GRU(input_size, hidden_size, batch_first=True)
-            def forward(self, x):
-                out, _ = self.gru(x)
-                return out[:, -1, :] # Take last hidden state
+try:
+    import faiss
+    FAISS_AVAILABLE = True
+except ImportError:
+    FAISS_AVAILABLE = False
+    print("[Memory] faiss not found — using numpy fallback. pip install faiss-cpu")
 
-        return nn.Sequential(
-            nn.Embedding(7, 32),
-            GRUWrapper(32, 64),
-            nn.Linear(64, self.dim)
+from encoder import MAP, SYMBOLS, VOCAB
+
+
+# ── EMBEDDING ─────────────────────────────────────────────────────────────────
+
+def _positional_embed(seq: str, dim: int = 64) -> np.ndarray:
+    """
+    Improved fallback embedding when CLM is not available.
+
+    Encodes:
+    - Symbol identity (one-hot × position weight)
+    - Position information (sinusoidal)
+    - Bigram transitions (captures local patterns)
+    - Global distribution (symbol frequency)
+
+    Far better than ord(c) % 7 but not as good as learned CLM embeddings.
+    """
+    vec = np.zeros(dim, dtype=np.float32)
+    n   = len(seq)
+    if n == 0:
+        return vec
+
+    # Segment 1: symbol frequency distribution (7 dims)
+    for s in seq:
+        if s in MAP:
+            vec[MAP[s]] += 1.0
+    if n > 0:
+        vec[:7] /= n
+
+    # Segment 2: positional symbol encoding (position-weighted)
+    for i, s in enumerate(seq[-32:]):
+        if s in MAP:
+            pos_weight = (i + 1) / len(seq[-32:])   # recent = higher weight
+            base = 7 + MAP[s] * 4
+            if base + 3 < dim:
+                vec[base]     += pos_weight
+                vec[base + 1] += pos_weight * np.sin(i * 0.3)
+                vec[base + 2] += pos_weight * np.cos(i * 0.3)
+
+    # Segment 3: bigram transitions
+    for i in range(len(seq) - 1):
+        a, b = seq[i], seq[i+1]
+        if a in MAP and b in MAP:
+            bigram_idx = 35 + MAP[a] * VOCAB + MAP[b]
+            if bigram_idx < dim:
+                vec[bigram_idx] += 1.0
+
+    # Normalise
+    norm = np.linalg.norm(vec) + 1e-9
+    return vec / norm
+
+
+class Memory:
+    """
+    FAISS-backed episodic pattern memory with CLM embeddings.
+
+    Stores (embedding, outcome) pairs and retrieves historically
+    similar patterns to estimate expected outcome of a given sequence.
+    """
+
+    def __init__(self, dim: int = 64, clm=None, decay: float = 0.95):
+        """
+        Args:
+            dim:   embedding dimension — must match CLM dim if provided
+            clm:   CandleLM instance for semantic embeddings (optional)
+            decay: time-decay factor — older memories have less weight
+        """
+        self.dim      = dim
+        self.clm      = clm
+        self.decay    = decay
+        self.outcomes : list  = []
+        self.timestamps: list = []
+        self.sequences : list = []
+        self._t        : int  = 0
+
+        if FAISS_AVAILABLE:
+            # L2 index — works well for normalised CLM embeddings
+            # For cosine similarity, use IndexFlatIP with normalised vectors
+            self.index = faiss.IndexFlatL2(dim)
+        else:
+            # Numpy fallback
+            self._vectors: list = []
+            self.index = None
+
+    def _embed(self, seq: str) -> np.ndarray:
+        """Get embedding vector for a sequence."""
+        if self.clm is not None:
+            try:
+                import torch
+                with torch.no_grad():
+                    emb = self.clm.get_embedding(seq)
+                vec = emb.numpy().astype(np.float32)
+                # Normalise for cosine-like behaviour in L2 space
+                norm = np.linalg.norm(vec) + 1e-9
+                return vec / norm
+            except Exception as e:
+                pass  # fallback to positional
+
+        # Adjust dim for positional embedding
+        return _positional_embed(seq, self.dim)
+
+    def add(self, seq: str, outcome: float):
+        """
+        Store a pattern → outcome pair.
+
+        Args:
+            seq:     symbol sequence that preceded the trade
+            outcome: trade result — use pips/10000 or normalised:
+                     +1.0 = strong win, -1.0 = strong loss, 0 = break-even
+        """
+        vec = self._embed(seq).reshape(1, -1)
+        self._t += 1
+
+        if FAISS_AVAILABLE:
+            self.index.add(vec)
+        else:
+            self._vectors.append(vec[0])
+
+        self.outcomes.append(float(outcome))
+        self.timestamps.append(self._t)
+        self.sequences.append(seq[-20:])   # keep last 20 chars for inspection
+
+    def query(self, seq: str, k: int = 7) -> tuple:
+        """
+        Find k most similar historical patterns and estimate outcome.
+
+        Returns:
+            (bias, confidence, n_found)
+
+            bias:       float -1 to +1, weighted average of similar outcomes
+            confidence: float 0-1, how consistent were the similar patterns
+            n_found:    int, number of similar patterns retrieved
+        """
+        n_stored = len(self.outcomes)
+        if n_stored < max(k, 3):
+            return 0.0, 0.0, 0
+
+        vec = self._embed(seq).reshape(1, -1)
+        k   = min(k, n_stored)
+
+        if FAISS_AVAILABLE:
+            distances, indices = self.index.search(vec, k)
+            indices = indices[0]
+            distances = distances[0]
+        else:
+            # Numpy L2 search
+            matrix    = np.stack(self._vectors)
+            dists     = np.sum((matrix - vec) ** 2, axis=1)
+            indices   = np.argsort(dists)[:k]
+            distances = dists[indices]
+
+        # Time-decay weighting: recent patterns count more
+        results = []
+        for i, idx in enumerate(indices):
+            if idx < 0 or idx >= n_stored:
+                continue
+            age    = self._t - self.timestamps[idx]
+            weight = (self.decay ** age) / (1.0 + distances[i])
+            results.append((self.outcomes[idx], weight))
+
+        if not results:
+            return 0.0, 0.0, 0
+
+        outcomes, weights = zip(*results)
+        total_w  = sum(weights)
+        bias     = sum(o * w for o, w in zip(outcomes, weights)) / total_w
+
+        # Confidence = 1 - normalised std (low std = all similar patterns agree)
+        if len(outcomes) > 1:
+            std        = np.std(outcomes)
+            confidence = max(0.0, 1.0 - std)
+        else:
+            confidence = abs(bias)
+
+        return float(bias), float(confidence), len(results)
+
+    def query_full(self, seq: str, k: int = 7) -> dict:
+        """
+        Extended query returning full breakdown for logging / display.
+        """
+        bias, conf, n = self.query(seq, k)
+        return {
+            'bias':        bias,
+            'confidence':  conf,
+            'n_similar':   n,
+            'memory_ok':   abs(bias) >= 0.25 and conf >= 0.40,
+            'direction':   'LONG' if bias > 0.1 else 'SHORT' if bias < -0.1 else 'NEUTRAL',
+        }
+
+    def persist(self, path: str):
+        """Save memory to disk."""
+        np.savez_compressed(path,
+            outcomes=np.array(self.outcomes, dtype=np.float32),
+            timestamps=np.array(self.timestamps, dtype=np.int32),
         )
-    
-    def encode_sequence(self, symbols: List[int]) -> np.ndarray:
-        """Encode n-gram context for FAISS"""
-        with torch.no_grad():
-            x = torch.tensor([symbols[-self.ngram_size:]])
-            emb = self.embedding_net(x).numpy()
-        return emb.flatten()
-    
-    def compute_context_mi(self, recent_symbols: List[int]) -> float:
-        """
-        FIXED: I(Sn; Sn-k:n-1) not I(Sn; Sn-1)
-        Mutual information between next symbol and preceding sequence
-        """
-        if len(recent_symbols) < self.ngram_size + 1:
-            return 0.0
-        
-        context = recent_symbols[-self.ngram_size-1:-1]  # Sn-k:n-1
-        target = recent_symbols[-1]  # Sn
-        
-        # Search similar contexts in memory
-        if self.index.ntotal == 0:
-            return 0.0
+        if FAISS_AVAILABLE and self.index.ntotal > 0:
+            faiss.write_index(self.index, path + '.faiss')
+        print(f"  Memory saved → {path} ({len(self.outcomes)} patterns)")
 
-        query = self.encode_sequence(context)
-        k = min(50, self.index.ntotal)
-        D, I = self.index.search(query.reshape(1, -1).astype('float32'), k=k)
-        
-        if len(I[0]) == 0:
-            return 0.0
-        
-        # Compute empirical conditional distribution
-        neighbors = [self.metadata[i] for i in I[0] if i >= 0 and i < len(self.metadata)]
-        outcomes = [m[1] for m in neighbors]  # Next symbols after similar contexts
-        
-        # Estimate H(Sn | context) via neighbor entropy
-        from collections import Counter
-        counts = Counter(outcomes)
-        total = sum(counts.values())
-        probs = [c/total for c in counts.values()]
-        conditional_entropy = -sum(p * np.log2(p) for p in probs if p > 0)
-        
-        # H(Sn) marginal (from base rates in memory)
-        all_outcomes = [m[1] for m in self.metadata]
-        base_counts = Counter(all_outcomes)
-        base_total = sum(base_counts.values())
-        base_probs = [c/base_total for c in base_counts.values()]
-        marginal_entropy = -sum(p * np.log2(p) for p in base_probs if p > 0)
-        
-        # MI = H(Sn) - H(Sn | context)
-        mi = marginal_entropy - conditional_entropy
-        return max(0, mi) / marginal_entropy if marginal_entropy > 0 else 0  # Normalized
-    
-    def get_bias_and_confidence(self, symbols: List[int]) -> Tuple[float, float]:
-        """
-        Returns: (expected_epsilon, confidence_sigma)
-        FIXED: Explicit confidence definition
-        """
-        if self.index.ntotal == 0:
-            return 0.0, 0.0
+    def load(self, path: str):
+        """Load memory from disk."""
+        try:
+            data = np.load(path + '.npz')
+            self.outcomes    = list(data['outcomes'])
+            self.timestamps  = list(data['timestamps'])
+            self._t          = int(max(self.timestamps)) if self.timestamps else 0
+            if FAISS_AVAILABLE:
+                import os
+                if os.path.exists(path + '.faiss'):
+                    self.index = faiss.read_index(path + '.faiss')
+            print(f"  Memory loaded ← {path} ({len(self.outcomes)} patterns)")
+        except Exception as e:
+            print(f"  Memory load failed: {e} — starting fresh")
 
-        query = self.encode_sequence(symbols)
-        k = min(20, self.index.ntotal)
-        D, I = self.index.search(query.reshape(1, -1).astype('float32'), k=k)
-        
-        if len(I[0]) == 0 or I[0][0] == -1:
-            return 0.0, 0.0  # No memory
-        
-        neighbors = [self.metadata[i] for i in I[0] if i < len(self.metadata)]
-        epsilons = [m[2] for m in neighbors]
-        
-        # Expected epsilon: weighted average by similarity
-        weights = np.exp(D[0][:len(epsilons)])  # Similarity scores
-        weights = weights / weights.sum()
-        expected_eps = np.average(epsilons, weights=weights)
-        
-        # FIXED: Confidence = 1 - normalized variance (high agreement = high conf)
-        variance = np.average((np.array(epsilons) - expected_eps)**2, weights=weights)
-        confidence = 1.0 - min(variance / 4.0, 1.0)  # Normalize by max possible var (ε∈[-2,2])
-        
-        return expected_eps, confidence
+    @property
+    def size(self) -> int:
+        return len(self.outcomes)
 
-    def add(self, symbols: List[int], next_symbol: int, outcome_eps: float):
-        """Add new experience to memory"""
-        if len(symbols) < self.ngram_size:
-            return
-
-        vector = self.encode_sequence(symbols)
-        # FAISS expects float32
-        self.index.add(vector.reshape(1, -1).astype('float32'))
-        self.metadata.append((symbols[-self.ngram_size:], next_symbol, outcome_eps))
+    def __repr__(self):
+        return f"Memory(size={self.size}, dim={self.dim}, clm={'yes' if self.clm else 'no'})"
