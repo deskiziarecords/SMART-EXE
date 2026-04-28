@@ -74,3 +74,37 @@ class Lambda7Engine:
         # Normalize to [-1, 1]
         signal = np.clip(dxy_momentum * 5, -1, 1)
         return signal
+
+# Add this at the bottom of your existing lambda7.py
+
+class Lambda7:
+    """
+    Adapter: wraps Lambda7Engine with the simple interface main.py expects.
+    Derives a synthetic MacroState from raw price list (close prices only).
+    For full macro fidelity, wire in real DXY/SPX/yields data here.
+    """
+
+    def __init__(self):
+        self._engine = Lambda7Engine()
+        self._last_prices: list[float] = []
+
+    def update(self, prices: list[float]) -> None:
+        self._last_prices = prices
+        if len(prices) < 2:
+            return
+
+        # Derive a minimal MacroState from price action alone.
+        # Replace these with real DXY/SPX/yields feeds when available.
+        pct_change = (prices[-1] - prices[-2]) / prices[-2] * 100
+
+        # 4h efficiency: ratio of net move to total path (last 20 bars)
+        window = prices[-20:] if len(prices) >= 20 else prices
+        net    = abs(window[-1] - window[0])
+        path   = sum(abs(window[i] - window[i-1]) for i in range(1, len(window)))
+        efficiency = (net / path) if path > 0 else 0.0
+
+        macro = MacroState(
+            dxy_change     = -pct_change,   # EUR/USD up → DXY down
+            dxy_trend      = efficiency,
+            spx_change     = 0.0,           # stub — wire real SPX here
+            yields_change  = 0.0,           # stub — wir
