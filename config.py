@@ -1,9 +1,9 @@
-OANDA_API_KEY = "YOUR_API_KEY"
-ACCOUNT_ID = "YOUR_ACCOUNT_ID"
-BASE_URL = "https://api-fxpractice.oanda.com/v3"
 
-PAIR = "EUR_USD"
 
-ENTROPY_THRESHOLD = 1.2
-TRADE_THRESHOLD = 0.7
-COOLDOWN = 300
+# Add these:
+MT5_LOGIN    = 106268076          # your account number
+MT5_PASSWORD = "your_password"
+MT5_SERVER   = "MetaQuotes-Demo"  # your broker server name
+
+PAIR         = "EURUSD"           # MT5 uses no underscore
+TIMEFRAME    = "M1"
