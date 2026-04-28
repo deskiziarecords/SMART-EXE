@@ -1,106 +1,20 @@
-# lambda7.py - DXY → EUR/USD causality
-import numpy as np
-from typing import Dict, Optional, Tuple
-from dataclasses import dataclass
-
-@dataclass
-class MacroState:
-    dxy_change: float      # DXY 1h change %
-    dxy_trend: float       # DXY 4h efficiency
-    spx_change: float      # S&P 500 futures (risk sentiment)
-    yields_change: float   # 2Y Treasury (rates differential proxy)
-
-class Lambda7Engine:
-    """
-    Macro causal validation for EUR/USD
-    DXY strength → EUR/USD weakness (negative correlation ~-0.85)
-    """
-    def __init__(self, correlation_window=50):
-        self.history = []
-        self.corr_window = correlation_window
-        self.current_regime = "normal"  # normal | risk_on | risk_off
-        
-    def update(self, macro: MacroState):
-        self.history.append(macro)
-        if len(self.history) > self.corr_window:
-            self.history.pop(0)
-        
-        # Detect regime
-        if len(self.history) >= 10:
-            recent = self.history[-10:]
-            avg_dxy = np.mean([m.dxy_change for m in recent])
-            avg_spx = np.mean([m.spx_change for m in recent])
-            
-            if avg_dxy > 0.3 and avg_spx < -0.5:
-                self.current_regime = "risk_off"  # USD flight-to-safety
-            elif avg_dxy < -0.2 and avg_spx > 0.3:
-                self.current_regime = "risk_on"   # USD selling
-            else:
-                self.current_regime = "normal"
-    
-def valid(self, direction: str) -> bool:
-    if not self._last_prices or len(self._last_prices) < 2:
-        return True
-
-    pct_change = (
-        (self._last_prices[-1] - self._last_prices[-2])
-        / self._last_prices[-2]
-        * 100
-    )
-
-    macro = MacroState(
-        dxy_change=(-pct_change),
-        dxy_trend=0.0,
-        spx_change=0.0,
-        yields_change=0.0,
-    )
-
-    engine_dir = 'BUY' if direction == 'LONG' else 'SELL'
-    is_valid, _ = self._engine.validate_direction(engine_dir, macro)
-    return is_valid
-    
-    def get_lambda7_signal(self) -> float:
-        """Aggregate causal strength (-1 to 1)"""
-        if len(self.history) < 5:
-            return 0.0
-        
-        recent = self.history[-5:]
-        dxy_momentum = np.mean([m.dxy_change for m in recent])
-        
-        # Normalize to [-1, 1]
-        signal = np.clip(dxy_momentum * 5, -1, 1)
-        return signal
-
-# Add this at the bottom of your existing lambda7.py
-
 class Lambda7:
-    """
-    Adapter: wraps Lambda7Engine with the simple interface main.py expects.
-    Derives a synthetic MacroState from raw price list (close prices only).
-    For full macro fidelity, wire in real DXY/SPX/yields data here.
-    """
-
     def __init__(self):
-        self._engine = Lambda7Engine()
-        self._last_prices: list[float] = []
+        self._last_prices = []
 
-    def update(self, prices: list[float]) -> None:
+    def update(self, prices):
         self._last_prices = prices
-        if len(prices) < 2:
-            return
 
-        # Derive a minimal MacroState from price action alone.
-        # Replace these with real DXY/SPX/yields feeds when available.
-        pct_change = (prices[-1] - prices[-2]) / prices[-2] * 100
+    def valid(self, direction: str) -> bool:
+        if len(self._last_prices) < 2:
+            return True
 
-        # 4h efficiency: ratio of net move to total path (last 20 bars)
-        window = prices[-20:] if len(prices) >= 20 else prices
-        net    = abs(window[-1] - window[0])
-        path   = sum(abs(window[i] - window[i-1]) for i in range(1, len(window)))
-        efficiency = (net / path) if path > 0 else 0.0
+        pct = (self._last_prices[-1] - self._last_prices[-2]) / self._last_prices[-2]
 
-        macro = MacroState(
-            dxy_change     = -pct_change,   # EUR/USD up → DXY down
-            dxy_trend      = efficiency,
-            spx_change     = 0.0,           # stub — wire real SPX here
-            yields_change  = 0.0,           # stub — wir
+        # simple macro proxy
+        if direction == "LONG" and pct < 0:
+            return False
+        if direction == "SHORT" and pct > 0:
+            return False
+
+        return True
