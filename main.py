@@ -23,7 +23,8 @@ Usage:
     python main.py                           # uses config.py settings
     python main.py --asset EURUSD --tf M1   # override
 """
-
+from data_feed import connect
+connect()   # authenticate to MT5 once at startup
 import time
 import argparse
 from collections import deque
