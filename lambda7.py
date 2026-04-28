@@ -38,30 +38,26 @@ class Lambda7Engine:
             else:
                 self.current_regime = "normal"
     
-    def validate_direction(self, direction: str, macro: MacroState) -> Tuple[bool, float]:
-        """
-        Returns: (valid, causal_strength)
-        """
-        # DXY-EURUSD inverse relationship
-        if direction == "BUY":  # EUR/USD long = USD weakness
-            # Valid if DXY weakening or risk-on
-            if macro.dxy_change < -0.1:
-                return True, abs(macro.dxy_change) * 2  # Strong confirmation
-            elif macro.dxy_change > 0.2:
-                return False, 0.0  # Contradiction
-            else:
-                return True, 0.3  # Weak/neutral confirmation
-                
-        elif direction == "SELL":  # EUR/USD short = USD strength
-            # Valid if DXY strengthening or risk-off
-            if macro.dxy_change > 0.1:
-                return True, macro.dxy_change * 2
-            elif macro.dxy_change < -0.2:
-                return False, 0.0
-            else:
-                return True, 0.3
-        
-        return False, 0.0
+def valid(self, direction: str) -> bool:
+    if not self._last_prices or len(self._last_prices) < 2:
+        return True
+
+    pct_change = (
+        (self._last_prices[-1] - self._last_prices[-2])
+        / self._last_prices[-2]
+        * 100
+    )
+
+    macro = MacroState(
+        dxy_change=(-pct_change),
+        dxy_trend=0.0,
+        spx_change=0.0,
+        yields_change=0.0,
+    )
+
+    engine_dir = 'BUY' if direction == 'LONG' else 'SELL'
+    is_valid, _ = self._engine.validate_direction(engine_dir, macro)
+    return is_valid
     
     def get_lambda7_signal(self) -> float:
         """Aggregate causal strength (-1 to 1)"""
