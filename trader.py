@@ -67,3 +67,14 @@ class Trader:
             "comment":   "SMART-EXE close",
             "type_filling": mt5.ORDER_FILLING_IOC,
         })
+
+class OandaTrader:
+    """Hyperion-compatible Trader."""
+    def execute(self, direction, size, price):
+        if MOCK_MODE or not MT5_AVAILABLE:
+            print(f"  [OANDA MOCK] EXECUTED {direction} {size} @ {price:.5f}")
+        else:
+            # Integrate with real OANDA API if available,
+            # or use MT5 as fallback for this environment.
+            print(f"  [OANDA] Real execution requested but not implemented. Falling back to log.")
+            print(f"  [OANDA] {direction} {size} @ {price:.5f}")

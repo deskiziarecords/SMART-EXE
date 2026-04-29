@@ -14,6 +14,8 @@ Symbols:
 
 This matches the annotated_candles.csv labels exactly.
 """
+from enum import Enum
+import numpy as np
 
 # Forward and reverse maps — consistent with QUIMERIA SMK + training data
 SYMBOL_MAP = {0: 'B', 1: 'I', 2: 'U', 3: 'D', 4: 'W', 5: 'w', 6: 'X'}
@@ -21,6 +23,14 @@ MAP        = {'B': 0, 'I': 1, 'U': 2, 'D': 3, 'W': 4, 'w': 5, 'X': 6}
 SYMBOLS    = ['B', 'I', 'U', 'D', 'W', 'w', 'X']
 VOCAB      = len(SYMBOLS)
 
+class CandleType(Enum):
+    B = 0
+    I = 1
+    U = 2
+    D = 3
+    W = 4
+    w = 5
+    X = 6
 
 def encode_candle(o: float, h: float, l: float, c: float) -> int:
     """
@@ -92,6 +102,57 @@ def sequence_to_indices(seq: str) -> list:
     """Convert symbol string to list of int indices for model input."""
     return [MAP[s] for s in seq if s in MAP]
 
+class SymbolicEncoder:
+    def __init__(self, lookback=20):
+        self.lookback = lookback
+        self.avg_body_history = []
+
+    def encode_candle(self, o, h, l, c) -> CandleType:
+        body = abs(c - o)
+        self.avg_body_history.append(body)
+        if len(self.avg_body_history) > 100:
+            self.avg_body_history.pop(0)
+
+        idx = encode_candle(o, h, l, c)
+        return CandleType(idx)
+
+    def compute_rho_c_fixed(self, symbols):
+        if not symbols: return 0.0
+        doji_count = symbols.count(CandleType.X.value)
+        return doji_count / len(symbols)
+
+    def compute_Q_session_fixed(self, symbols):
+        if not symbols: return 0.0
+        n = len(symbols)
+        doji_count = symbols.count(CandleType.X.value)
+        clusters = self._clusters(symbols, CandleType.X.value)
+
+        Q = (
+            (doji_count / n) *
+            (sum(k * clusters.get(k, 0) for k in range(3, 10)) /
+             (sum((k**2) * clusters.get(k, 0) for k in range(5, 10)) + 1e-6))
+        )
+        return float(Q)
+
+    def compute_eta_trend(self, k_bar, min_v, max_v):
+        # Simplified trend efficiency based on avg run length
+        if k_bar <= 1.0: return 0.0
+        # Normalize between min_v and max_v
+        return min(1.0, (k_bar - min_v) / (max_v - min_v))
+
+    def _clusters(self, seq, symbol_val):
+        clusters = {}
+        count = 0
+        for s in seq:
+            if s == symbol_val:
+                count += 1
+            else:
+                if count > 0:
+                    clusters[count] = clusters.get(count, 0) + 1
+                    count = 0
+        if count > 0:
+            clusters[count] = clusters.get(count, 0) + 1
+        return clusters
 
 if __name__ == '__main__':
     # Sanity check against annotated CSV labels

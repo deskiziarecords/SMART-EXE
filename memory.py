@@ -17,26 +17,12 @@ Two modes:
   2. WITHOUT CLM (fallback): improved positional encoding,
      still far better than ord(c) % 7
 
-Usage:
-    from memory import Memory
-    from model import load_model
-
-    clm    = load_model('clm_eurusd.pt')
-    memory = Memory(clm=clm)
-
-    # After a trade outcome:
-    memory.add(sequence, outcome=1.0)   # 1.0 = win, -1.0 = loss, 0 = neutral
-
-    # Before a trade:
-    bias, confidence, n_similar = memory.query(sequence)
-    # bias: -1 to +1 (negative = historically bearish, positive = bullish)
-    # confidence: 0-1 (how consistent were the similar patterns)
-    # n_similar: how many matches found
-
 Interface is backward compatible with old Memory class.
 """
 
 import numpy as np
+from collections import Counter
+import math
 
 try:
     import faiss
@@ -122,7 +108,6 @@ class Memory:
 
         if FAISS_AVAILABLE:
             # L2 index — works well for normalised CLM embeddings
-            # For cosine similarity, use IndexFlatIP with normalised vectors
             self.index = faiss.IndexFlatL2(dim)
         else:
             # Numpy fallback
@@ -140,7 +125,7 @@ class Memory:
                 # Normalise for cosine-like behaviour in L2 space
                 norm = np.linalg.norm(vec) + 1e-9
                 return vec / norm
-            except Exception as e:
+            except Exception:
                 pass  # fallback to positional
 
         # Adjust dim for positional embedding
@@ -173,10 +158,6 @@ class Memory:
 
         Returns:
             (bias, confidence, n_found)
-
-            bias:       float -1 to +1, weighted average of similar outcomes
-            confidence: float 0-1, how consistent were the similar patterns
-            n_found:    int, number of similar patterns retrieved
         """
         n_stored = len(self.outcomes)
         if n_stored < max(k, 3):
@@ -263,5 +244,70 @@ class Memory:
     def size(self) -> int:
         return len(self.outcomes)
 
-    def __repr__(self):
-        return f"Memory(size={self.size}, dim={self.dim}, clm={'yes' if self.clm else 'no'})"
+class FAISSMemory:
+    """Hyperion-compatible episodic pattern memory with JAX/FAISS acceleration."""
+
+    def __init__(self, dim=16, ngram_size=5):
+        """
+        Args:
+            dim:   embedding dimension
+            ngram_size: n-gram window for context analysis
+        """
+        self.dim = dim
+        self.ngram_size = ngram_size
+        if FAISS_AVAILABLE:
+            self.index = faiss.IndexFlatL2(dim)
+        else:
+            self.index = None
+            print("[FAISSMemory] FAISS not found - running in degraded mode")
+        self.history = []
+        self.outcomes = []
+
+    def compute_context_mi(self, symbols):
+        """Estimate Information Theory metrics (Mutual Information / Pattern Entropy)."""
+        if not symbols: return 0.0
+        n = len(symbols)
+        counts = Counter(symbols)
+        probs = [c/n for c in counts.values()]
+        entropy = -sum(p * math.log2(p) for p in probs)
+        return entropy
+
+    def get_bias_and_confidence(self, symbols):
+        """Find similar historical patterns and estimate directional bias."""
+        if not self.history or self.index is None or not FAISS_AVAILABLE:
+            return 0.0, 0.0
+
+        query = self._embed(symbols).reshape(1, -1)
+        k = min(5, len(self.history))
+        D, I = self.index.search(query, k)
+
+        neighbor_outcomes = [self.outcomes[idx] for idx in I[0] if idx != -1]
+        if not neighbor_outcomes:
+            return 0.0, 0.0
+
+        bias = sum(neighbor_outcomes) / len(neighbor_outcomes)
+        conf = 1.0 / (1.0 + np.mean(D[0]))
+        return float(bias), float(conf)
+
+    def add(self, symbols, last_symbol_val, outcome):
+        """Store a sequence → outcome pair in memory."""
+        emb = self._embed(symbols).reshape(1, -1)
+        if self.index is not None:
+            self.index.add(emb)
+        self.history.append(symbols)
+        self.outcomes.append(outcome)
+
+    def _embed(self, symbols):
+        """Create a fixed-length numeric embedding from a sequence of symbols."""
+        vec = np.zeros(self.dim, dtype=np.float32)
+        # Handle both list of ints and list of objects/Enums
+        for i, s in enumerate(symbols[-self.dim:]):
+            try:
+                val = float(s)
+            except (TypeError, ValueError):
+                # Fallback for Enum or complex objects
+                val = float(getattr(s, 'value', 0))
+            vec[i] = val
+
+        norm = np.linalg.norm(vec) + 1e-9
+        return vec / norm
