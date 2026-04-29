@@ -23,8 +23,6 @@ Usage:
     python main.py                           # uses config.py settings
     python main.py --asset EURUSD --tf M1   # override
 """
-from data_feed import connect
-connect()   # authenticate to MT5 once at startup
 import time
 import argparse
 from collections import deque
@@ -35,7 +33,7 @@ from model   import CandleLM, load_model
 from memory  import Memory
 from risk_engine import RiskEngine
 from trader  import Trader
-from data_feed import get_price, get_bar   # returns (o,h,l,c) bar
+from data_feed import connect, get_price, get_bar   # returns (o,h,l,c) bar
 from lambda7 import Lambda7
 from logger  import log_block, log_trade, log_signal
 
@@ -43,7 +41,7 @@ try:
     from config import (
         PAIR, TIMEFRAME, ENTROPY_THRESHOLD,
         MODEL_PATH, MEMORY_PATH,
-        MAX_SEQ_LEN, WINDOW,
+        MAX_SEQ_LEN, WINDOW, MOCK_MODE
     )
 except ImportError:
     # Defaults if config.py not present
@@ -54,6 +52,7 @@ except ImportError:
     MEMORY_PATH       = 'memory_eurusd'
     MAX_SEQ_LEN       = 200
     WINDOW            = 10
+    MOCK_MODE         = False
 
 
 def entropy(seq: str) -> float:
@@ -67,12 +66,20 @@ def entropy(seq: str) -> float:
 
 
 def run(pair: str = PAIR, model_path: str = MODEL_PATH,
-        memory_path: str = MEMORY_PATH, dry_run: bool = False):
+        memory_path: str = MEMORY_PATH, dry_run: bool = False, mock: bool = MOCK_MODE):
 
     print("═" * 60)
     print(f"  SMART-EXE — {pair} {TIMEFRAME}")
     print(f"  Mode: {'DRY RUN' if dry_run else 'LIVE'}")
+    print(f"  Environment: {'MOCK' if mock else 'REAL'}")
     print("═" * 60)
+
+    # ── Connect to Data Feed ──────────────────────────────────────────────────
+    import data_feed
+    data_feed.MOCK_MODE = mock
+    import trader as trader_module
+    trader_module.MOCK_MODE = mock
+    connect()
 
     # ── Load CLM ──────────────────────────────────────────────────────────────
     import os
@@ -101,7 +108,7 @@ def run(pair: str = PAIR, model_path: str = MODEL_PATH,
     open_trade: dict | None = None
     bar_count  = 0
 
-    print(f"\n  Starting live loop — {pair} {TIMEFRAME}\n")
+    print(f"\n  Starting {'mock ' if mock else ''}loop — {pair} {TIMEFRAME}\n")
 
     while True:
         try:
@@ -206,7 +213,7 @@ def run(pair: str = PAIR, model_path: str = MODEL_PATH,
                     trader.close(open_trade['id'])
                     memory.add(open_trade['sequence'], outcome)
                     log_trade(open_trade, c, pips)
-                    print(f"  → CLOSED {pips:+.1f}p", end='')
+                    # print(f"  → CLOSED {pips:+.1f}p", end='') # logger now handles this
                     open_trade = None
 
             print()
@@ -222,8 +229,8 @@ def run(pair: str = PAIR, model_path: str = MODEL_PATH,
                 size      = decision['size']
 
                 log_signal(state, decision)
-                print(f"  ▶ TRADE: {direction} {size} lots @ {c:.5f}")
-                print(f"    reason: {decision['reason']}")
+                # print(f"  ▶ TRADE: {direction} {size} lots @ {c:.5f}") # logger now handles this
+                # print(f"    reason: {decision['reason']}")
 
                 if not dry_run:
                     trade_id = trader.order(direction, size)
@@ -244,7 +251,10 @@ def run(pair: str = PAIR, model_path: str = MODEL_PATH,
                 print(f"  [Memory saved: {memory.size} patterns]")
 
             # ── Sleep until next bar ──────────────────────────────────────────
-            time.sleep(60 if TIMEFRAME == 'M1' else 5)
+            if mock:
+                time.sleep(1)
+            else:
+                time.sleep(60 if TIMEFRAME == 'M1' else 5)
 
         except KeyboardInterrupt:
             print("\n\n  Stopping SMART-EXE…")
@@ -265,11 +275,16 @@ if __name__ == '__main__':
     parser.add_argument('--model',    default=MODEL_PATH, help='CLM model path')
     parser.add_argument('--memory',   default=MEMORY_PATH,help='Memory path')
     parser.add_argument('--dry-run',  action='store_true', help='No real orders')
+    parser.add_argument('--mock',     action='store_true', help='Use mock data feed')
     args = parser.parse_args()
+
+    # CLI flag overrides config
+    is_mock = args.mock or MOCK_MODE
 
     run(
         pair=args.asset,
         model_path=args.model,
         memory_path=args.memory,
         dry_run=args.dry_run,
+        mock=is_mock
     )

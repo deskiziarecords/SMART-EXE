@@ -7,3 +7,4 @@ MT5_SERVER   = "MetaQuotes-Demo"  # your broker server name
 
 PAIR         = "EURUSD"           # MT5 uses no underscore
 TIMEFRAME    = "M1"
+MOCK_MODE    = True
