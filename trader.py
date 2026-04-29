@@ -1,8 +1,19 @@
-import MetaTrader5 as mt5
-from config import PAIR
+import random
+try:
+    import MetaTrader5 as mt5
+    MT5_AVAILABLE = True
+except ImportError:
+    MT5_AVAILABLE = False
+
+from config import PAIR, MOCK_MODE
 
 class Trader:
     def order(self, direction: str, size: float) -> int:
+        if MOCK_MODE or not MT5_AVAILABLE:
+            ticket = random.randint(100000, 999999)
+            print(f"  [MOCK TRADER] {direction} {size} lots @ MOCK_PRICE ticket={ticket}")
+            return ticket
+
         tick   = mt5.symbol_info_tick(PAIR)
         price  = tick.ask if direction == 'LONG' else tick.bid
         action = mt5.ORDER_TYPE_BUY if direction == 'LONG' else mt5.ORDER_TYPE_SELL
@@ -28,6 +39,10 @@ class Trader:
         return result.order
 
     def close(self, ticket: int):
+        if MOCK_MODE or not MT5_AVAILABLE:
+            print(f"  [MOCK TRADER] Closing ticket {ticket}")
+            return
+
         position = None
         for pos in mt5.positions_get():
             if pos.ticket == ticket:
